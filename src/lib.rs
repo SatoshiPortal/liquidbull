@@ -16,9 +16,7 @@ use std::time::Duration;
 use tempdir::TempDir;
 
 const DUST_VALUE: u64 = 546;
-
 static LOGGER: SimpleLogger = SimpleLogger;
-
 //TODO duplicated why I cannot import?
 pub struct SimpleLogger;
 
@@ -293,72 +291,6 @@ impl TestElectrumWallet {
         assert_eq!(tx.spv_verified.to_string(), verified.to_string());
     }
 
-    /// send a tx with multiple recipients with same amount from the wallet to addresses generated
-    /// by the node. If `assets` contains values, they are used as asset cyclically
-    pub fn send_multi(
-        &mut self,
-        recipients: u8,
-        amount: u64,
-        assets: &Vec<elements::issuance::AssetId>,
-        server: &mut TestElectrumServer,
-    ) {
-        let init_sat = self.balance_btc();
-        let init_balances = self.electrum_wallet.balance().unwrap();
-        let mut create_opt = CreateTransactionOpt::default();
-        let fee_rate = 1000;
-        create_opt.fee_rate = Some(fee_rate);
-        let net = self.electrum_wallet.network();
-        let mut addressees = vec![];
-        let mut assets_cycle = assets.iter().cycle();
-        let mut tags = vec![];
-        for _ in 0..recipients {
-            let address = server.node_getnewaddress(None);
-            let asset = if assets.is_empty() {
-                self.policy_asset()
-            } else {
-                let current = elements::issuance::AssetId::from_hex(
-                    &assets_cycle.next().unwrap().to_string(),
-                )
-                .unwrap();
-                tags.push(current);
-                current
-            };
-            create_opt.addressees.push(
-                Destination::new(&address.to_string(), amount, &asset.to_hex(), net).unwrap(),
-            );
-            addressees.push(address);
-        }
-        let tx_details = self.electrum_wallet.create_tx(&mut create_opt).unwrap();
-        let mut tx = tx_details.transaction.clone();
-        self.electrum_wallet
-            .sign_tx(&mut tx, &self.mnemonic)
-            .unwrap();
-        //self.check_fee_rate(fee_rate, &signed_tx, MAX_FEE_PERCENT_DIFF);
-        let _txid = tx.txid().to_string();
-        self.electrum_wallet.broadcast_tx(&tx).unwrap();
-        self.wallet_wait_tx_status_change();
-        self.tx_checks(&tx);
-
-        let fee = tx_details.fee;
-        if assets.is_empty() {
-            assert_eq!(
-                init_sat - fee - recipients as u64 * amount,
-                self.balance_btc()
-            );
-        } else {
-            assert_eq!(init_sat - fee, self.balance_btc());
-            for asset in assets {
-                let outputs_for_this_asset = tags.iter().filter(|t| t == &asset).count() as u64;
-                assert_eq!(
-                    *init_balances.get(&asset).unwrap() as u64 - outputs_for_this_asset * amount,
-                    self.balance(asset)
-                );
-            }
-        }
-        //TODO check node balance
-        //self.list_tx_contains(&txid, &addressees, true);
-    }
-
     /// check create_tx failure reasons
     pub fn create_fails(&mut self, server: &mut TestElectrumServer) {
         let policy_asset = self.policy_asset();
@@ -460,85 +392,6 @@ impl TestElectrumWallet {
         self.electrum_wallet.utxos().unwrap()
     }
 
-    pub fn asset_utxos(&self, asset: &elements::issuance::AssetId) -> Vec<UnblindedTXO> {
-        self.electrum_wallet
-            .utxos()
-            .unwrap()
-            .iter()
-            .cloned()
-            .filter(|u| u.unblinded.asset == *asset)
-            .collect()
-    }
-
-    /// performs checks on transactions, like checking for address reuse in outputs and on liquid confidential commitments inequality
-    pub fn tx_checks(&self, transaction: &elements::Transaction) {
-        let output_nofee: Vec<&elements::TxOut> =
-            transaction.output.iter().filter(|o| !o.is_fee()).collect();
-        for current in output_nofee.iter() {
-            assert_eq!(
-                1,
-                output_nofee
-                    .iter()
-                    .filter(|o| o.script_pubkey == current.script_pubkey)
-                    .count(),
-                "address reuse"
-            ); // for example using the same change address for lbtc and asset change
-            assert_eq!(
-                1,
-                output_nofee
-                    .iter()
-                    .filter(|o| o.asset == current.asset)
-                    .count(),
-                "asset commitment equal"
-            );
-            assert_eq!(
-                1,
-                output_nofee
-                    .iter()
-                    .filter(|o| o.value == current.value)
-                    .count(),
-                "value commitment equal"
-            );
-            assert_eq!(
-                1,
-                output_nofee
-                    .iter()
-                    .filter(|o| o.nonce == current.nonce)
-                    .count(),
-                "nonce commitment equal"
-            );
-        }
-        assert!(
-            transaction.output.last().unwrap().is_fee(),
-            "last output is not a fee"
-        );
-    }
-
-    pub fn liquidex_make(
-        &self,
-        utxo: &elements::OutPoint,
-        asset: &elements::issuance::AssetId,
-        rate: f64,
-    ) -> LiquidexProposal {
-        let opt = LiquidexMakeOpt {
-            utxo: utxo.clone(),
-            asset_id: asset.clone(),
-            rate,
-        };
-        self.electrum_wallet
-            .liquidex_make(&opt, &self.mnemonic)
-            .unwrap()
-    }
-
-    pub fn liquidex_take(&mut self, proposal: &LiquidexProposal) -> String {
-        let tx = self
-            .electrum_wallet
-            .liquidex_take(proposal, &self.mnemonic)
-            .unwrap();
-        self.electrum_wallet.broadcast_tx(&tx).unwrap();
-        self.wallet_wait_tx_status_change();
-        tx.txid().to_string()
-    }
 }
 
 #[cfg(test)]
