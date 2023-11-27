@@ -4,20 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chrono = "0.4"  
-electrsd = "0.14" 
-bitcoincore-rpc = "0.14" 
-serde_json = "1.0"  
-tempdir = "0.3"  
-bewallet = { git = "https://github.com/LeoComandini/BEWallet.git" }
-bitcoin = "0.31.0"
-rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_cbor = "0.11.1"
+chrono = "0.4.11"
+rand = "0.8"
 hex = "0.4.0"
 log = "0.4.8"
 aes-gcm-siv = "0.10.0"
-electrum-client = "0.12.0"
 bip39 = "1.0.0-rc1"
 elements = { version = "0.20.0", features = ["serde"] }
+electrsd = { version = "0.21.1", features = [ "legacy" ] }
+bitcoincore-rpc = "0.14" 
+tempdir = "0.3.7"
+bewallet = { git = "https://github.com/LeoComandini/BEWallet.git" }
+bitcoin = "0.31.0"
+electrum-client = "0.12.0"
